@@ -1,8 +1,8 @@
 #!/bin/python
 #encoding=utf-8
 #作用：获取b站的音频并转为mp3格式（真）
-#版本：v0.1.0
-#最后更新日期：2025-09-14
+#版本：v0.2.0
+#最后更新日期：2026-05-29
 
 import os
 import re
@@ -110,27 +110,28 @@ class App:
 			#将每个bv号分别处理：
 			for bv in bvList:
 				logger.info("正在处理：{}".format(bv))
-				file_name=downloadOne(bv, path)
-				if not file_name:
+				file_name_list=downloadMore(bv, path)
+				if not file_name_list:
 					return
-				src=os.path.join(path, file_name)
-				logger.info("下载完成，文件位于：{}".format(src))
-				
-				#下载好了之后转换为mp3格式
-				logger.info("正在将【{}】转换为mp3格式".format(file_name))
-				dst_name="{}.mp3".format(".".join(file_name.split('.')[:-1]))
-				dst=os.path.join(path, dst_name)
-				
-				if not toMp3(src, dst):
-					logger.error("转换失败")
-					messagebox.showwarning("提示", "{}转换格式失败".format(file_name))
-					return
-				
-				logger.info("转换成功，最终文件位于：{}".format(dst))
-				#如果转换成功就删除原文件
-				logger.debug("正在删除原文件：{}".format(src))
-				os.remove(src)
-				logger.debug("删除结束")
+				for file_name in file_name_list:
+					src=os.path.join(path, file_name)
+					logger.info("下载完成，文件位于：{}".format(src))
+					
+					#下载好了之后转换为mp3格式
+					logger.info("正在将【{}】转换为mp3格式".format(file_name))
+					dst_name="{}.mp3".format(".".join(file_name.split('.')[:-1]))
+					dst=os.path.join(path, dst_name)
+					
+					if not toMp3(src, dst):
+						logger.error("转换失败")
+						messagebox.showwarning("提示", "{}转换格式失败".format(file_name))
+						return
+					
+					logger.info("转换成功，最终文件位于：{}".format(dst))
+					#如果转换成功就删除原文件
+					logger.debug("正在删除原文件：{}".format(src))
+					os.remove(src)
+					logger.debug("删除结束")
 				logger.info("任务完成：{}".format(bv))
 				
 		except Exception as e:
@@ -140,6 +141,7 @@ class App:
 class MyAudio(Audio):
 	def download(self, path: str = ""):
 		start_time = time.time()
+		file_name_list=[]
 		try:
 			for cid, part in zip(self.cid_list, self.part_list):
 				if len(self.part_list) > 1:
@@ -162,8 +164,22 @@ class MyAudio(Audio):
 							expand=False,
 						)
 					)
-					logger.warning("此文件已存在，将跳过：{}".format(file_name))
-					return
+					logger.warning("此文件已存在，将跳过下载：{}".format(file_name))
+					#return
+					file_name_list.append(file_name)
+					continue
+				
+				# 如果MP3文件已存在，则直接跳过下载
+				if os.path.exists(file_path[:-4]+".mp3"):
+					console.print(
+						Panel(
+							f"{self.title} 已存在，跳过下载",
+							style="yellow",
+							expand=False,
+						)
+					)
+					logger.warning("此文件已存在，将跳过下载和转化：{}".format(file_name[:-4]+".mp3"))
+					continue
 
 				params = get_signed_params(
 					{
@@ -245,7 +261,8 @@ class MyAudio(Audio):
 							expand=False,
 						)
 					)
-			return file_name
+				file_name_list.append(file_name)
+			return file_name_list
 		except Exception as e:
 			console.print(
 				Panel(
@@ -325,7 +342,7 @@ def toMp3(infile: str, outfile: str) -> bool:
 	return True
 
 # 下载一个BV号的相关音频
-def downloadOne(bv: str, path: str="") -> str:
+def downloadMore(bv: str, path: str="") -> List[str]:
 	audio=MyAudio(bv, AudioQualityEnums.k192)
 	return audio.download(path)
 
