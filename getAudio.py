@@ -1,13 +1,14 @@
 #!/bin/python
 #encoding=utf-8
 #作用：获取b站的音频并转为mp3格式（真）
-#版本：v0.2.0
-#最后更新日期：2026-05-29
+#版本：v0.3.0
+#最后更新日期：2026-05-30
 
 import os
 import re
 import logging
 import subprocess
+import requests
 from rich.logging import RichHandler
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
@@ -27,6 +28,28 @@ logger.addHandler(console_handler)
 # 控制台输出
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)
+
+#系统常量
+BILIAPI_HEADERS= {
+            "authority": "api.bilibili.com",
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "accept-language": "zh-CN,zh;q=0.9",
+            "cache-control": "no-cache",
+            "dnt": "1",
+            "pragma": "no-cache",
+            "sec-ch-ua": '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Referer": "https://www.bilibili.com/",
+        }
+BILIAPI_session = requests.Session()
+BILIAPI_session.headers.update(BILIAPI_HEADERS)
 
 # 自定义日志 Handler，将日志写入 Tkinter 文本框
 class TextHandler(logging.Handler):
@@ -346,9 +369,65 @@ def downloadMore(bv: str, path: str="") -> List[str]:
 	audio=MyAudio(bv, AudioQualityEnums.k192)
 	return audio.download(path)
 
-# 提取 BV 号
+#作用：统一处理地址，全部转化为BV号
 def getBV(url: str) -> List[str]:
-	return re.findall(r'BV[a-zA-Z0-9]{10}', url)
+	bvList=re.findall(r'BV[a-zA-Z0-9]{10}', url)
+	otherIdList=re.findall(r'bilibili.com/bangumi/play/([a-z]*[0-9]*)', url)
+	for otherId in otherIdList:
+		logger.info("找到剧集ID，正在查询BV号：【{}】".format(otherId))
+		tmpList=get_bvid(otherId)
+		if tmpList:
+			logger.info("查找到BV号，添加进下载列表：{}".format(tmpList))
+			bvList.extend(tmpList)
+		else:
+			logger.error("未找到【{}】的视频BV号，请检查".format(otherId))
+			continue
+	return bvList
+
+#作用：B站ID统一处理，全部返回BV号
+def get_bvid(id_str):
+    if id_str.startswith("ep"):
+        url = (
+            "https://api.bilibili.com/pgc/view/web/season"
+            f"?ep_id={id_str[2:]}"
+        )
+        data = BILIAPI_session.get(url).json()
+
+        for ep in data["result"]["episodes"]:
+            if str(ep["id"]) == id_str[2:]:
+                return [ep["bvid"]]
+
+    elif id_str.startswith("ss"):
+        url = (
+            "https://api.bilibili.com/pgc/view/web/season"
+            f"?season_id={id_str[2:]}"
+        )
+        data = BILIAPI_session.get(url).json()
+
+        return [ep["bvid"]
+                for ep in data["result"]["episodes"]]
+
+    elif id_str.startswith("md"):
+        url = (
+            "https://api.bilibili.com/pgc/review/user"
+            f"?media_id={id_str[2:]}"
+        )
+        data = BILIAPI_session.get(url).json()
+        season_id = data["result"]["media"]["season_id"]
+        url = (
+            "https://api.bilibili.com/pgc/view/web/season"
+            f"?season_id={season_id}"
+        )
+        data = BILIAPI_session.get(url).json()
+
+        return [ep["bvid"]
+                for ep in data["result"]["episodes"]]
+
+    elif id_str.startswith("BV"):
+        return [id_str]
+
+    return []
+
 
 def main():
 	root = tk.Tk()
